@@ -40,9 +40,6 @@ git push https://YOUR_TOKEN@github.com/arulkumarcn-dev/AI_Youtube.git main --for
 ```
 
 ### Option 3: Using SSH
-```powershell
-# 1. Generate SSH key (if not exists)
-ssh-keygen -t ed25519 -C "arulkumarcn.dev@gmail.com"
 
 # 2. Add SSH key to GitHub
 # Copy public key
