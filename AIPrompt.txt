@@ -1,0 +1,19 @@
+Build a RAG Based Gen-AI Application (chat-bot) - Q&A over YouTube Videos. Bot shall answer - Only from Context.
+
+Steps:
+
+# 1 Select Topic of your interest  (e.g. Healthcare, Data Engineering, Gen-AI, or any Podcast videos).
+
+# 2 Get the transcript/s store in text-files- for the YouTube Video / Videos (Hint - Use YouTube API and Video-IDs to get the transcript)
+
+# 3 Use Text-Splitter to divide huge transcripts into chunks.
+
+# 4 Generate Embeddings for the chunks and store in Vector-DB (eg - Chroma / FAISS/ PineCone - optional)
+
+# 5 Integrate LLM of your choice - (GPT / Grok / Gemini). Integrate Embedding model - to display the page no. in the transcript.
+
+# 6 Send prompts/questions and generate responses from the external knowledge (transcripts).
+
+# 7 Try to make it dynamic - to chat in a loop untill 'exit' is typed, the bot shall run.
+
+# 8 Build UI using 'Gradio'.

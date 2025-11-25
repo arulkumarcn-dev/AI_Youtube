@@ -1,0 +1,134 @@
+@page "/database"
+@using YouTubeRAGChatbot.Core.Configuration
+@inject AppSettings Settings
+@rendermode @(new InteractiveServerRenderMode())
+
+<PageTitle>Database Info - YouTube RAG Chatbot</PageTitle>
+
+<div class="database-info-container">
+    <h2>📊 Database Information</h2>
+
+    <button class="btn btn-primary mb-3" @onclick="LoadInfo">
+        🔄 Refresh Info
+    </button>
+
+    @if (isLoading)
+    {
+        <div class="alert alert-info">Loading database information...</div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="card-body">
+                <h4>📈 Statistics</h4>
+                <ul>
+                    <li><strong>Document Chunks:</strong> @chunkCount</li>
+                    <li><strong>Transcript Files:</strong> @transcriptFiles.Count</li>
+                    <li><strong>Database Path:</strong> @Settings.Storage.VectorDbDirectory</li>
+                    <li><strong>LLM Model:</strong> @Settings.OpenAI.Model</li>
+                    <li><strong>Embedding Model:</strong> @Settings.OpenAI.EmbeddingModel</li>
+                </ul>
+
+                @if (transcriptFiles.Any())
+                {
+                    <h4 class="mt-4">📹 Videos in Database</h4>
+                    <ul>
+                        @foreach (var file in transcriptFiles)
+                        {
+                            <li>
+                                <a href="https://www.youtube.com/watch?v=@file" target="_blank">@file</a>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-muted mt-3">No videos in database yet. Add some videos to get started!</p>
+                }
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-body">
+                <h4>⚙️ Configuration</h4>
+                <ul>
+                    <li><strong>Chunk Size:</strong> @Settings.RAG.ChunkSize</li>
+                    <li><strong>Chunk Overlap:</strong> @Settings.RAG.ChunkOverlap</li>
+                    <li><strong>Top K Results:</strong> @Settings.RAG.TopK</li>
+                    <li><strong>Temperature:</strong> @Settings.OpenAI.Temperature</li>
+                </ul>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .database-info-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .card {
+        margin-bottom: 20px;
+    }
+</style>
+
+@code {
+    private int chunkCount = 0;
+    private List<string> transcriptFiles = new();
+    private bool isLoading = false;
+    private string errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInfo();
+    }
+
+    private async Task LoadInfo()
+    {
+        isLoading = true;
+        errorMessage = "";
+        StateHasChanged();
+
+        await Task.Run(() =>
+        {
+            try
+            {
+                // Count chunks from vector database
+                var vectorDbPath = Path.Combine(Settings.Storage.VectorDbDirectory, "vectordb.json");
+                if (File.Exists(vectorDbPath))
+                {
+                    var json = File.ReadAllText(vectorDbPath);
+                    var data = System.Text.Json.JsonSerializer.Deserialize<List<object>>(json);
+                    chunkCount = data?.Count ?? 0;
+                }
+                else
+                {
+                    chunkCount = 0;
+                }
+
+                // Get transcript files
+                transcriptFiles.Clear();
+                if (Directory.Exists(Settings.Storage.TranscriptDirectory))
+                {
+                    var files = Directory.GetFiles(Settings.Storage.TranscriptDirectory, "*.txt");
+                    transcriptFiles = files
+                        .Select(Path.GetFileNameWithoutExtension)
+                        .Where(f => !string.IsNullOrEmpty(f))!
+                        .ToList();
+                }
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error loading database info: {ex.Message}";
+            }
+        });
+
+        isLoading = false;
+        StateHasChanged();
+    }
+}

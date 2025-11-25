@@ -1,0 +1,174 @@
+@page "/add-videos"
+@using YouTubeRAGChatbot.Core.Services
+@using YouTubeRAGChatbot.Core.Configuration
+@inject ITranscriptFetcherService TranscriptFetcher
+@inject ITextChunkerService TextChunker
+@inject IVectorDatabaseService VectorDatabase
+@inject AppSettings Settings
+@rendermode @(new InteractiveServerRenderMode())
+
+<PageTitle>Add Videos - YouTube RAG Chatbot</PageTitle>
+
+<div class="add-videos-container">
+    <h2>➕ Add YouTube Videos</h2>
+    <p>Enter YouTube video URLs or IDs (one per line or comma-separated)</p>
+
+    <div class="form-group">
+        <textarea class="form-control" 
+                  rows="6" 
+                  placeholder="Example:&#10;https://www.youtube.com/watch?v=VIDEO_ID&#10;or just: VIDEO_ID"
+                  @bind="videoInput"
+                  disabled="@isProcessing"></textarea>
+    </div>
+
+    <button class="btn btn-primary btn-lg" 
+            @onclick="AddVideosToDatabase"
+            disabled="@(isProcessing || string.IsNullOrWhiteSpace(videoInput))">
+        @if (isProcessing)
+        {
+            <span>Processing...</span>
+        }
+        else
+        {
+            <span>Add Videos to Database</span>
+        }
+    </button>
+
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert @(statusMessage.Contains("✅") ? "alert-success" : statusMessage.Contains("❌") ? "alert-danger" : "alert-info") mt-3">
+            <pre>@statusMessage</pre>
+        </div>
+    }
+
+    <div class="mt-4">
+        <h4>ℹ️ Instructions:</h4>
+        <ul>
+            <li>Videos must have captions/transcripts available</li>
+            <li>After adding videos, go to the Chat page to start asking questions</li>
+            <li>New videos are automatically added to the existing database</li>
+        </ul>
+    </div>
+</div>
+
+<style>
+    .add-videos-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .form-group {
+        margin: 20px 0;
+    }
+
+    pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+</style>
+
+@code {
+    private string videoInput = "";
+    private string statusMessage = "";
+    private bool isProcessing = false;
+
+    private async Task AddVideosToDatabase()
+    {
+        if (string.IsNullOrWhiteSpace(videoInput))
+            return;
+
+        isProcessing = true;
+        statusMessage = "🔄 Processing videos...\n";
+        StateHasChanged();
+
+        try
+        {
+            // Parse video IDs
+            var videoIds = videoInput
+                .Replace("\n", ",")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(v => v.Trim())
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .ToList();
+
+            if (videoIds.Count == 0)
+            {
+                statusMessage = "❌ No valid video IDs found";
+                return;
+            }
+
+            statusMessage += $"Found {videoIds.Count} video(s)\n\n";
+            StateHasChanged();
+
+            // Step 1: Fetch transcripts
+            statusMessage += "📥 Step 1: Fetching transcripts...\n";
+            StateHasChanged();
+
+            var transcripts = await TranscriptFetcher.FetchMultipleTranscriptsAsync(videoIds);
+            
+            if (transcripts.Count == 0)
+            {
+                statusMessage += "❌ No transcripts fetched successfully\n";
+                return;
+            }
+
+            // Save transcripts
+            foreach (var transcript in transcripts)
+            {
+                await TranscriptFetcher.SaveTranscriptAsync(transcript, Settings.Storage.TranscriptDirectory);
+            }
+
+            statusMessage += $"✓ Fetched {transcripts.Count} transcripts\n\n";
+            StateHasChanged();
+
+            // Step 2: Chunk transcripts
+            statusMessage += "✂️ Step 2: Chunking transcripts...\n";
+            StateHasChanged();
+
+            var chunks = TextChunker.ChunkMultipleTranscripts(
+                transcripts,
+                Settings.RAG.ChunkSize,
+                Settings.RAG.ChunkOverlap
+            );
+
+            statusMessage += $"✓ Created {chunks.Count} chunks\n\n";
+            StateHasChanged();
+
+            // Step 3: Add to vector database
+            statusMessage += "🗄️ Step 3: Adding to vector database...\n";
+            StateHasChanged();
+
+            var dbPath = Path.GetFullPath(Settings.Storage.VectorDbDirectory);
+            try
+            {
+                await VectorDatabase.LoadFromFileAsync(dbPath);
+                await VectorDatabase.AddChunksAsync(chunks);
+                await VectorDatabase.SaveToFileAsync(dbPath);
+                statusMessage += "✓ Added to existing database\n\n";
+            }
+            catch (FileNotFoundException)
+            {
+                await VectorDatabase.InitializeAsync();
+                await VectorDatabase.AddChunksAsync(chunks);
+                await VectorDatabase.SaveToFileAsync(dbPath);
+                statusMessage += "✓ Created new database\n\n";
+            }
+
+            statusMessage += $"✅ Success!\n";
+            statusMessage += $"   - {transcripts.Count} videos added\n";
+            statusMessage += $"   - {chunks.Count} chunks created\n";
+            statusMessage += $"\nYou can now chat with these videos!";
+
+            videoInput = "";
+        }
+        catch (Exception ex)
+        {
+            statusMessage += $"\n❌ Error: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+}
